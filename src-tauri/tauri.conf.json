@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/nicerdicer/tauri-apps/dev/crates/tauri-config-schema/schema.json",
   "productName": "Pass GUI",
   "version": "0.1.0",
-  "identifier": "com.pass-gui.app",
+  "identifier": "com.pass-gui",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Pass - Password Manager",
         "width": 1000,
         "height": 700,
@@ -25,14 +26,21 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app"],
+    "targets": ["app", "dmg", "nsis", "deb", "appimage"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
+      "icons/icon.ico",
       "icons/icon.png"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    }
   },
-  "plugins": {}
+  "plugins": {
+  }
 }

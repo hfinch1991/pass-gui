@@ -31,3 +31,19 @@ export interface GpgKey {
   uid: string;
   fingerprint: string;
 }
+
+export interface EntryFields {
+  password: string;
+  username: string | null;
+  url: string | null;
+  notes: string | null;
+  totp: string | null;
+  tags: string[];
+  extra: [string, string][];
+}
+
+export interface TotpCode {
+  code: string;
+  seconds_remaining: number;
+  period: number;
+}

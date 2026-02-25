@@ -16,6 +16,24 @@ const remoteSaving = ref(false);
 const remoteError = ref<string | null>(null);
 const remoteSuccess = ref(false);
 
+const browserInstalling = ref(false);
+const browserMessage = ref<string | null>(null);
+const browserError = ref<string | null>(null);
+
+async function installBrowser() {
+  browserInstalling.value = true;
+  browserMessage.value = null;
+  browserError.value = null;
+  try {
+    const msg = await invoke<string>("install_browser_extension");
+    browserMessage.value = msg;
+  } catch (e: any) {
+    browserError.value = typeof e === "string" ? e : e.message || "Failed";
+  } finally {
+    browserInstalling.value = false;
+  }
+}
+
 onMounted(async () => {
   try {
     const [s, info, keys] = await Promise.all([
@@ -148,6 +166,21 @@ function currentGpgKey(): GpgKey | undefined {
             <div v-if="remoteSuccess" class="success-msg">Remote updated.</div>
           </div>
         </section>
+
+        <!-- Browser -->
+        <section class="section">
+          <h4>Browser Integration</h4>
+          <p class="description">
+            Supports <a href="https://github.com/browserpass/browserpass-extension" target="_blank" rel="noopener">Browserpass</a> (Chrome/Edge).
+          </p>
+          <div class="browser-actions">
+            <button class="small" :disabled="browserInstalling" @click="installBrowser">
+              {{ browserInstalling ? "Installing..." : "Install Browser Manifest" }}
+            </button>
+            <div v-if="browserMessage" class="success-msg">{{ browserMessage }}</div>
+            <div v-if="browserError" class="error">{{ browserError }}</div>
+          </div>
+        </section>
       </template>
 
       <div class="actions">
@@ -257,5 +290,20 @@ code {
 .status {
   color: var(--text-dim);
   padding: 12px 0;
+}
+.description {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.description a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.browser-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
 }
 </style>

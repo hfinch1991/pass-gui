@@ -8,6 +8,8 @@ import GenerateDialog from "../dialogs/GenerateDialog.vue";
 import MoveDialog from "../dialogs/MoveDialog.vue";
 import GrepDialog from "../dialogs/GrepDialog.vue";
 import SettingsDialog from "../dialogs/SettingsDialog.vue";
+import ImportDialog from "../dialogs/ImportDialog.vue";
+import ExportDialog from "../dialogs/ExportDialog.vue";
 
 const store = usePasswordStore();
 const showAdd = ref(false);
@@ -16,6 +18,8 @@ const showGenerate = ref(false);
 const showMove = ref(false);
 const showGrep = ref(false);
 const showSettings = ref(false);
+const showImport = ref(false);
+const showExport = ref(false);
 const showConfirmDelete = ref(false);
 const showMessage = ref(false);
 const messageText = ref("");
@@ -95,6 +99,8 @@ async function gitLog() {
       </button>
     </div>
     <div class="toolbar-group">
+      <button @click="showImport = true">Import</button>
+      <button @click="showExport = true">Export</button>
       <button @click="showGrep = true">Grep</button>
       <button @click="store.loadTree()">Refresh</button>
       <button @click="gitPush">Push</button>
@@ -110,6 +116,8 @@ async function gitLog() {
   <MoveDialog v-if="showMove" @close="showMove = false" />
   <GrepDialog v-if="showGrep" @close="showGrep = false" />
   <SettingsDialog v-if="showSettings" @close="showSettings = false" />
+  <ImportDialog v-if="showImport" @close="showImport = false" />
+  <ExportDialog v-if="showExport" @close="showExport = false" />
 
   <!-- Confirm Delete Dialog -->
   <div v-if="showConfirmDelete" class="modal-overlay" @click.self="showConfirmDelete = false">

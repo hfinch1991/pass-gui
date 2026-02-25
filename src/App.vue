@@ -7,6 +7,7 @@ import SearchBar from "./components/SearchBar.vue";
 import TreeView from "./components/TreeView.vue";
 import DetailPanel from "./components/DetailPanel.vue";
 import SetupWizard from "./components/SetupWizard.vue";
+import PassphraseDialog from "./dialogs/PassphraseDialog.vue";
 
 const store = usePasswordStore();
 const setupStore = useSetupStore();
@@ -52,6 +53,13 @@ onMounted(async () => {
         <DetailPanel />
       </main>
     </div>
+
+    <PassphraseDialog
+      v-if="store.needsPassphrase"
+      :error="store.passphraseError"
+      @submit="store.submitPassphrase"
+      @cancel="store.cancelPassphrase"
+    />
   </div>
 </template>
 
