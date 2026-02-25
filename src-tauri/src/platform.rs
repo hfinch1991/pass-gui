@@ -42,13 +42,27 @@ pub fn augmented_path() -> String {
 
     #[cfg(target_os = "windows")]
     {
-        // Add common Gpg4win and Git for Windows paths
+        // 1. Detect bundled tools in resources folder
+        let exe_dir = std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
+        let bundled_gpg = exe_dir.join("resources/gnupg/bin");
+        let bundled_git = exe_dir.join("resources/git/bin");
+        let bundled_git_cmd = exe_dir.join("resources/git/cmd");
+
+        let mut paths = Vec::new();
+        if bundled_gpg.exists() { paths.push(bundled_gpg.to_string_lossy().into_owned()); }
+        if bundled_git.exists() { paths.push(bundled_git.to_string_lossy().into_owned()); }
+        if bundled_git_cmd.exists() { paths.push(bundled_git_cmd.to_string_lossy().into_owned()); }
+
+        // 2. Add common Gpg4win and Git for Windows paths
         let program_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".into());
         let program_files_x86 = std::env::var("ProgramFiles(x86)").unwrap_or_else(|_| "C:\\Program Files (x86)".into());
-        format!(
-            "{}\\GnuPG\\bin;{}\\Git\\cmd;{}\\GnuPG\\bin;{}",
-            program_files, program_files, program_files_x86, current
-        )
+        
+        paths.push(format!("{}\\GnuPG\\bin", program_files));
+        paths.push(format!("{}\\Git\\cmd", program_files));
+        paths.push(format!("{}\\GnuPG\\bin", program_files_x86));
+        paths.push(current);
+
+        paths.join(";")
     }
 
     #[cfg(target_os = "linux")]
@@ -60,20 +74,20 @@ pub fn augmented_path() -> String {
 pub fn gpg_binary() -> &'static str {
     #[cfg(target_os = "windows")]
     {
-        "gpg"
+        "gpg.exe"
     }
 
     #[cfg(not(target_os = "windows"))]
     {
         // Prefer gpg2 if available, fall back to gpg
-        if Command::new("gpg2")
-            .arg("--version")
+        let mut cmd = Command::new("gpg2");
+        cmd.arg("--version")
+            .env("PATH", augmented_path())
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_ok()
-        {
+            .stderr(std::process::Stdio::null());
+
+        if cmd.status().map(|s| s.success()).unwrap_or(false) {
             "gpg2"
         } else {
             "gpg"
