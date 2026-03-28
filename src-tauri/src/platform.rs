@@ -87,6 +87,12 @@ pub fn gpg_binary() -> &'static str {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
 
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+
         if cmd.status().map(|s| s.success()).unwrap_or(false) {
             "gpg2"
         } else {
@@ -100,13 +106,20 @@ pub fn is_wizard_done() -> bool {
 }
 
 pub fn run_command(program: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(program)
-        .args(args)
+    let mut cmd = Command::new(program);
+    cmd.args(args)
         .env("PATH", augmented_path())
         .env("LC_ALL", "C")
         .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(std::process::Stdio::null())
-        .output()
+        .stdin(std::process::Stdio::null());
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let output = cmd.output()
         .map_err(|e| format!("Failed to run {}: {}", program, e))?;
 
     if output.status.success() {
@@ -124,15 +137,22 @@ pub fn run_command(program: &str, args: &[&str]) -> Result<String, String> {
 
 pub fn run_command_stdin(program: &str, args: &[&str], input: &str) -> Result<String, String> {
     use std::io::Write;
-    let mut child = Command::new(program)
-        .args(args)
+    let mut cmd = Command::new(program);
+    cmd.args(args)
         .env("PATH", augmented_path())
         .env("LC_ALL", "C")
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+        .stderr(std::process::Stdio::piped());
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to run {}: {}", program, e))?;
 
     if let Some(mut stdin) = child.stdin.take() {

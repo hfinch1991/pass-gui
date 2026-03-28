@@ -6,7 +6,7 @@ use crate::platform::{store_dir, home_dir};
 use crate::types::{EntryFields, TreeNode};
 use crate::store;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct BrowserRequest {
     action: String,
     settings: Option<serde_json::Value>,
@@ -16,6 +16,7 @@ struct BrowserRequest {
     path: Option<String>,
     username: Option<String>,
     password: Option<String>,
+    passphrase: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -42,13 +43,36 @@ enum BrowserResponse {
 }
 
 fn log_msg(msg: &str) {
+    let log_path = crate::platform::config_dir().join("native-messaging.log");
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("/tmp/pass-gui-native.log")
+        .open(log_path)
     {
         let _ = writeln!(file, "[{}] {}", chrono::Local::now(), msg);
     }
+}
+
+fn find_first_gpg_file(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut dirs = Vec::new();
+    for entry in entries.filter_map(|e| e.ok()) {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with('.') { continue; }
+        let Some(ft) = entry.file_type().ok() else { continue; };
+        if ft.is_file() && name.ends_with(".gpg") {
+            return Some(entry.path());
+        }
+        if ft.is_dir() {
+            dirs.push(entry.path());
+        }
+    }
+    for d in dirs {
+        if let Some(found) = find_first_gpg_file(&d) {
+            return Some(found);
+        }
+    }
+    None
 }
 
 pub fn handle_native_messaging() {
@@ -81,9 +105,33 @@ pub fn handle_native_messaging() {
                         map.insert("files".to_string(), files);
                         BrowserResponse::List(map)
                     }
+                    "check-passphrase" => {
+                        let store = store_dir();
+                        match find_first_gpg_file(&store) {
+                            Some(gpg_path) => {
+                                match gpg::decrypt_file(&gpg_path, None) {
+                                    Ok(_) => BrowserResponse::Status { status: "ok".into(), message: None },
+                                    Err(_) => BrowserResponse::Status { status: "expired".into(), message: None },
+                                }
+                            }
+                            None => BrowserResponse::Error { status: "error".into(), error: "No .gpg files found in store".into() }
+                        }
+                    }
+                    "unlock" => {
+                        let store = store_dir();
+                        match find_first_gpg_file(&store) {
+                            Some(gpg_path) => {
+                                match gpg::decrypt_file(&gpg_path, req.passphrase.as_deref()) {
+                                    Ok(_) => BrowserResponse::Status { status: "ok".into(), message: None },
+                                    Err(e) => BrowserResponse::Error { status: "error".into(), error: e },
+                                }
+                            }
+                            None => BrowserResponse::Error { status: "error".into(), error: "No .gpg files found in store".into() }
+                        }
+                    }
                     "fetch" => {
                         if let Some(path) = req.entry {
-                            match store::show(&path, None) {
+                            match store::show(&path, req.passphrase.as_deref()) {
                                 Ok(raw) => BrowserResponse::Fetch { action_name: "fetch".into(), entry: path, raw_entry: raw },
                                 Err(e) => BrowserResponse::Error { status: "error".into(), error: e },
                             }
@@ -113,7 +161,7 @@ pub fn handle_native_messaging() {
                     }
                     "search" => {
                         let term = req.domain.or(req.url).unwrap_or_default();
-                        match search_by_url(&term) {
+                        match search_by_url(&term, req.passphrase.as_deref()) {
                             Ok(results) => {
                                 let res = serde_json::json!({ "status": "ok", "results": results });
                                 let res_json = serde_json::to_vec(&res).unwrap_or_default();
@@ -144,12 +192,16 @@ pub fn install_manifest() -> Result<String, String> {
     
     // Create absolute path wrapper
     let bin_dir = home.join(".local/bin");
-    std::fs::create_dir_all(&bin_dir).ok();
+    let _ = std::fs::create_dir_all(&bin_dir);
     let wrapper_path = bin_dir.join("pass-gui-native-wrapper");
-    let script = format!("#!/bin/bash\nexport PATH=\"/usr/local/bin:/opt/homebrew/bin:$PATH\"\n\"{}\" --native-messaging \"$@\"\n", exe_path);
-    std::fs::write(&wrapper_path, script).ok();
-    use std::os::unix::fs::PermissionsExt;
-    let _ = std::fs::set_permissions(&wrapper_path, std::fs::Permissions::from_mode(0o755));
+    
+    #[cfg(unix)]
+    {
+        let script = format!("#!/bin/bash\nexport PATH=\"/usr/local/bin:/opt/homebrew/bin:$PATH\"\n\"{}\" --native-messaging \"$@\"\n", exe_path);
+        let _ = std::fs::write(&wrapper_path, script);
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&wrapper_path, std::fs::Permissions::from_mode(0o755));
+    }
 
     let wrapper_path_str = wrapper_path.to_string_lossy();
 
@@ -215,12 +267,12 @@ pub fn install_manifest() -> Result<String, String> {
     { Err("Unsupported OS".into()) }
 }
 
-pub fn search_by_url(search_url: &str) -> Result<Vec<(String, EntryFields)>, String> {
+pub fn search_by_url(search_url: &str, passphrase: Option<&str>) -> Result<Vec<(String, EntryFields)>, String> {
     let domain = extract_domain(search_url).ok_or("Invalid URL")?;
     let domain_lower = domain.to_lowercase();
     let store = store_dir();
     let mut results = Vec::new();
-    walk_and_search(&store, "", &domain_lower, &mut results);
+    walk_and_search(&store, "", &domain_lower, passphrase, &mut results);
     Ok(results)
 }
 
@@ -234,19 +286,19 @@ fn extract_domain(url_str: &str) -> Option<String> {
     Some(url_str.to_string())
 }
 
-fn walk_and_search(dir: &std::path::Path, prefix: &str, domain: &str, results: &mut Vec<(String, EntryFields)>) {
+fn walk_and_search(dir: &std::path::Path, prefix: &str, domain: &str, passphrase: Option<&str>, results: &mut Vec<(String, EntryFields)>) {
     let Ok(entries) = std::fs::read_dir(dir) else { return; };
     for dir_entry in entries.filter_map(|e| e.ok()) {
         let name = dir_entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') { continue; }
         if dir_entry.file_type().map(|f| f.is_dir()).unwrap_or(false) {
             let child_prefix = if prefix.is_empty() { name } else { format!("{}/{}", prefix, name) };
-            walk_and_search(&dir_entry.path(), &child_prefix, domain, results);
+            walk_and_search(&dir_entry.path(), &child_prefix, domain, passphrase, results);
         } else if name.ends_with(".gpg") {
             let entry_name = name.trim_end_matches(".gpg");
             let entry_path = if prefix.is_empty() { entry_name.to_string() } else { format!("{}/{}", prefix, entry_name) };
             if entry_path.to_lowercase().contains(domain) {
-                if let Ok(content) = gpg::decrypt_file(&dir_entry.path(), None) {
+                if let Ok(content) = gpg::decrypt_file(&dir_entry.path(), passphrase) {
                     results.push((entry_path, entry::parse(&content)));
                 }
             }

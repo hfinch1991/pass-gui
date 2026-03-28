@@ -1,13 +1,21 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use std::env;
 use std::io::Write;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
     
+    let log_path = if cfg!(windows) {
+        env::var("TEMP").map(std::path::PathBuf::from).unwrap_or_else(|_| std::path::PathBuf::from("C:\\Windows\\Temp")).join("pass-gui-main.log")
+    } else {
+        std::path::PathBuf::from("/tmp/pass-gui-main.log")
+    };
+
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("/tmp/pass-gui-main.log")
+        .open(&log_path)
     {
         let _ = writeln!(file, "[{}] STARTUP - Args: {:?}", chrono::Local::now(), args);
     }
@@ -30,7 +38,7 @@ fn main() {
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open("/tmp/pass-gui-main.log")
+            .open(&log_path)
         {
             let _ = writeln!(file, "[{}] Entering BACKGROUND mode", chrono::Local::now());
         }

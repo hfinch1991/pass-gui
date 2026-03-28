@@ -12,12 +12,32 @@
     li.loading { cursor: wait; color: #888; text-align: center; }
     li.empty { cursor: default; color: #888; text-align: center; }
     .status { font-size: 12px; color: #888; margin-top: 5px; text-align: right; }
+    #unlock-screen { text-align: center; }
+    #unlock-screen .lock-icon { font-size: 32px; margin: 10px 0; }
+    #unlock-screen p { font-size: 12px; color: #a6adc8; margin: 8px 0; }
+    #unlock-btn { width: 100%; padding: 8px; margin-top: 8px; border: none; border-radius: 4px; background: #89b4fa; color: #1e1e2e; font-weight: bold; cursor: pointer; }
+    #unlock-btn:hover { background: #74c7ec; }
+    #unlock-error { color: #f38ba8; font-size: 12px; margin-top: 6px; min-height: 16px; }
   </style>
 </head>
 <body>
   <h3>Pass GUI Filler</h3>
-  <input id="search" placeholder="Search..." autofocus>
-  <ul id="list"></ul>
+
+  <!-- Unlock screen (shown when GPG agent expired) -->
+  <div id="unlock-screen" style="display:none;">
+    <div class="lock-icon">&#128274;</div>
+    <p>GPG passphrase required</p>
+    <input id="passphrase" type="password" placeholder="Enter GPG passphrase..." autocomplete="off" autofocus>
+    <button id="unlock-btn">Unlock</button>
+    <div id="unlock-error"></div>
+  </div>
+
+  <!-- Main screen (search + results) -->
+  <div id="main-screen" style="display:none;">
+    <input id="search" placeholder="Search...">
+    <ul id="list"></ul>
+  </div>
+
   <div id="status" class="status"></div>
   <script src="popup.js"></script>
 </body>

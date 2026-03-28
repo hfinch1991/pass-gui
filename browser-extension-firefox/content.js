@@ -3,17 +3,21 @@ const b = typeof browser !== "undefined" ? browser : chrome;
 
 let matchedEntries = [];
 let currentDomain = window.location.hostname.replace(/^www\./, "");
+let cachedPassphrase = null;
 
 function init() {
   if (!document.querySelector('input[type="password"]')) {
     setTimeout(init, 1500);
     return;
   }
-  b.runtime.sendMessage({ action: "search", domain: currentDomain }, (response) => {
-    if (response && response.status === "ok") {
-      matchedEntries = response.results || [];
-      injectIcons();
-    }
+  b.storage.session.get("passphrase").then((data) => {
+    cachedPassphrase = data.passphrase || null;
+    b.runtime.sendMessage({ action: "search", domain: currentDomain, passphrase: cachedPassphrase }).then((response) => {
+      if (response && response.status === "ok") {
+        matchedEntries = response.results || [];
+        injectIcons();
+      }
+    });
   });
 }
 
@@ -61,7 +65,7 @@ function addIconToInput(input) {
   const observer = new ResizeObserver(updatePosition);
   observer.observe(input);
   observer.observe(document.body);
-  
+
   icon.addEventListener('click', (e) => {
     e.preventDefault(); e.stopPropagation();
     showMenu(input);
@@ -111,7 +115,7 @@ function showMenu(input) {
   });
 
   shadow.appendChild(menu);
-  
+
   const updateMenuPos = () => {
     if (!input.isConnected) { menuHost.remove(); return; }
     const rect = input.getBoundingClientRect();
@@ -119,12 +123,21 @@ function showMenu(input) {
     menuHost.style.left = (rect.left) + 'px';
   };
   updateMenuPos();
-  
-  const closer = (e) => { 
-    if(!menuHost.contains(e.target)) { 
-      menuHost.remove(); 
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateMenuPos);
+    window.visualViewport.addEventListener('scroll', updateMenuPos);
+  }
+
+  const closer = (e) => {
+    if(!menuHost.contains(e.target)) {
+      menuHost.remove();
       document.removeEventListener('mousedown', closer);
-    } 
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', updateMenuPos);
+        window.visualViewport.removeEventListener('scroll', updateMenuPos);
+      }
+    }
   };
   setTimeout(() => document.addEventListener('mousedown', closer), 10);
 }
@@ -143,24 +156,27 @@ function saveCurrent(input, menuHost) {
   if (!pass) { alert("Please type a password first."); return; }
   const path = prompt("Save entry as path:", `${currentDomain}/${user || 'account'}`);
   if (!path) return;
-  b.runtime.sendMessage({ action: "save", path, username: user, password: pass, url: window.location.href }, (res) => {
+  b.runtime.sendMessage({ action: "save", path, username: user, password: pass, url: window.location.href }).then((res) => {
     if (res.status === "ok") { alert("Successfully saved!"); menuHost.remove(); init(); }
     else { alert("Error: " + res.error); }
   });
 }
 
 function fetchAndFill(path) {
-  b.runtime.sendMessage({ action: "fetch", entry: path }, (res) => {
-    if (res && res.rawEntry) {
-      const lines = res.rawEntry.split('\n');
-      const pass = lines[0];
-      let user = "";
-      for (const line of lines) {
-        const m = line.match(/^(username|user|login|email):\s*(.*)$/i);
-        if (m) { user = m[2].trim(); break; }
+  b.storage.session.get("passphrase").then((data) => {
+    const pp = data.passphrase || null;
+    b.runtime.sendMessage({ action: "fetch", entry: path, passphrase: pp }).then((res) => {
+      if (res && res.rawEntry) {
+        const lines = res.rawEntry.split('\n');
+        const pass = lines[0];
+        let user = "";
+        for (const line of lines) {
+          const m = line.match(/^(username|user|login|email):\s*(.*)$/i);
+          if (m) { user = m[2].trim(); break; }
+        }
+        fillPage(user, pass);
       }
-      fillPage(user, pass);
-    }
+    });
   });
 }
 

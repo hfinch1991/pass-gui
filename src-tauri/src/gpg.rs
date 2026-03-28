@@ -22,6 +22,12 @@ pub fn decrypt_file(path: &Path, passphrase: Option<&str>) -> Result<String, Str
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn gpg: {}", e))?;
 
     if let Some(pw) = passphrase {
@@ -56,16 +62,23 @@ pub fn encrypt_to_file(content: &str, gpg_id: &str, dest: &Path) -> Result<(), S
     let gpg = gpg_binary();
     let dest_str = dest.to_string_lossy();
 
-    let mut child = std::process::Command::new(gpg)
-        .args([
+    let mut cmd = std::process::Command::new(gpg);
+    cmd.args([
             "--batch", "--no-tty", "--quiet", "--yes", "-r", gpg_id, "--encrypt", "--output", &dest_str,
         ])
         .env("PATH", augmented_path())
         .env("LC_ALL", "C")
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+        .stderr(std::process::Stdio::piped());
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to run gpg encrypt: {}", e))?;
 
     if let Some(mut stdin) = child.stdin.take() {

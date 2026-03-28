@@ -26,12 +26,12 @@ fn setup_windows_deps() {
 
     // 2. Setup GnuPG
     let gpg_dir = res_dir.join("gnupg");
-    if !gpg_dir.exists() {
+    if !gpg_dir.exists() || fs::read_dir(&gpg_dir).map(|mut d| d.next().is_none()).unwrap_or(true) {
         println!("cargo:warning=Downloading GnuPG for Windows...");
-        fs::create_dir_all(&gpg_dir).unwrap();
-        // Portable GnuPG (simplified structure for this POC)
-        let url = "https://gnupg.org/ftp/gcrypt/binary/gnupg-w32-2.4.5_20240307.zip";
-        download_and_extract_zip(url, &gpg_dir);
+        let _ = fs::create_dir_all(&gpg_dir);
+        // Using the .tar.xz version which is available
+        let url = "https://gnupg.org/ftp/gcrypt/binary/gnupg-w32-2.4.5_20240307.tar.xz";
+        download_and_extract_tar_xz(url, &gpg_dir);
     }
 }
 
@@ -59,4 +59,13 @@ fn download_and_extract_zip(url: &str, dest: &Path) {
             std::io::copy(&mut file, &mut outfile).unwrap();
         }
     }
+}
+
+fn download_and_extract_tar_xz(url: &str, dest: &Path) {
+    let response = reqwest::blocking::get(url).expect("Failed to download dependency");
+    let bytes = response.bytes().expect("Failed to read response bytes");
+    let xz_decoder = xz2::read::XzDecoder::new(Cursor::new(bytes));
+    let mut archive = tar::Archive::new(xz_decoder);
+    
+    archive.unpack(dest).expect("Failed to unpack tar.xz archive");
 }

@@ -248,7 +248,7 @@ pub fn export_csv(file_path: String) -> Result<u32, String> {
 
 #[tauri::command]
 pub fn search_by_url(url: String) -> Result<Vec<(String, EntryFields)>, String> {
-    native_messaging::search_by_url(&url)
+    native_messaging::search_by_url(&url, None)
 }
 
 #[tauri::command]

@@ -2,17 +2,21 @@
 
 let matchedEntries = [];
 let currentDomain = window.location.hostname.replace(/^www\./, "");
+let cachedPassphrase = null;
 
 function init() {
   if (!document.querySelector('input[type="password"]')) {
     setTimeout(init, 1500);
     return;
   }
-  chrome.runtime.sendMessage({ action: "search", domain: currentDomain }, (response) => {
-    if (response && response.status === "ok") {
-      matchedEntries = response.results || [];
-      injectIcons();
-    }
+  chrome.storage.session.get("passphrase", (data) => {
+    cachedPassphrase = data.passphrase || null;
+    chrome.runtime.sendMessage({ action: "search", domain: currentDomain, passphrase: cachedPassphrase }, (response) => {
+      if (response && response.status === "ok") {
+        matchedEntries = response.results || [];
+        injectIcons();
+      }
+    });
   });
 }
 
@@ -169,17 +173,20 @@ function saveCurrent(input, menuHost) {
 }
 
 function fetchAndFill(path) {
-  chrome.runtime.sendMessage({ action: "fetch", entry: path }, (res) => {
-    if (res && res.rawEntry) {
-      const lines = res.rawEntry.split('\n');
-      const pass = lines[0];
-      let user = "";
-      for (const line of lines) {
-        const m = line.match(/^(username|user|login|email):\s*(.*)$/i);
-        if (m) { user = m[2].trim(); break; }
+  chrome.storage.session.get("passphrase", (data) => {
+    const pp = data.passphrase || null;
+    chrome.runtime.sendMessage({ action: "fetch", entry: path, passphrase: pp }, (res) => {
+      if (res && res.rawEntry) {
+        const lines = res.rawEntry.split('\n');
+        const pass = lines[0];
+        let user = "";
+        for (const line of lines) {
+          const m = line.match(/^(username|user|login|email):\s*(.*)$/i);
+          if (m) { user = m[2].trim(); break; }
+        }
+        fillPage(user, pass);
       }
-      fillPage(user, pass);
-    }
+    });
   });
 }
 
